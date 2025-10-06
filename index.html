@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Autoclave Error Messages: Troubleshooting Guide</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+
+        #roll-button, #restart-button {
+            background-color: #532A8C; /* Primary Dark */
+            transition: background-color 0.3s ease-in-out, transform 0.3s ease-in-out;
+        }
+
+        #roll-button:hover, #restart-button:hover {
+            background-color: #7ABF49; /* Accent Green Dark */
+        }
+
+        @keyframes slide-out-up {
+            from { transform: translateY(0); opacity: 1; }
+            to { transform: translateY(-100%); opacity: 0; }
+        }
+
+        @keyframes slide-in-up {
+            from { transform: translateY(100%); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+
+        @keyframes pulse-bg {
+            0% { background-color: #F2F2F2; } /* Light Grey */
+            50% { background-color: #e9e4f5; /* A lighter shade of purple for pulse */ }
+            100% { background-color: #F2F2F2; }
+        }
+
+        .animate-slide-out-up {
+            animation: slide-out-up 0.5s forwards;
+        }
+
+        .animate-slide-in-up {
+            animation: slide-in-up 0.5s forwards;
+        }
+
+        .pulse-background {
+            animation: pulse-bg 1s;
+        }
+    </style>
+</head>
+<body class="bg-[#9D8ABB] min-h-screen flex items-center justify-center p-4">
+    <div class="bg-[#F2F2F2] p-6 rounded-2xl shadow-xl max-w-2xl w-full">
+        <h1 class="text-3xl font-bold text-center mb-6 text-[#532A8C]">Autoclave Error Messages</h1>
+
+        <!-- Progress Tracker -->
+        <div id="progress" class="text-center text-sm text-[#532A8C] mb-2 font-medium"></div>
+
+        <!-- Tube Container (Display Area) -->
+        <div id="tube-container" class="relative overflow-hidden h-64 rounded-xl border-2 p-4 flex items-center justify-center bg-[#F2F2F2]" style="border-color: #C3ACE8;">
+            <div id="content-display" class="absolute w-full h-full flex flex-col justify-start items-center text-center px-4"></div>
+        </div>
+
+        <!-- Buttons -->
+        <div class="mt-8 flex flex-col gap-4">
+            <button id="roll-button" class="py-3 rounded-xl text-white font-semibold">Next Error</button>
+            <button id="restart-button" class="py-3 rounded-xl text-white font-semibold hidden">Start Over</button>
+        </div>
+    </div>
+
+    <script>
+        const errorsContent = [
+            {
+                title: "Cycle Aborted / Cycle Failed / Sterilisation Not Complete",
+                explanation: `
+                    <p><strong>Meaning:</strong> This is a general message indicating that the autoclave did not successfully complete its programmed cycle, whether it was a test cycle or a regular sterilisation run.</p>
+                    <p><strong>Why it's an error:</strong> The machine's internal monitoring system detected a critical deviation or malfunction, meaning the conditions for sterilisation were not met. Any load from this cycle is unsterile.</p>
+                `
+            },
+            {
+                title: "Air Removal Failure / Vacuum Fault / Leak Detected",
+                explanation: `
+                    <p><strong>Meaning:</strong> These messages specifically indicate a problem with the autoclave's ability to remove air from the chamber, which is crucial for steam penetration, especially in pre-vacuum (Class B) autoclaves. This is often linked to failed Bowie-Dick or Helix tests.</p>
+                    <p><strong>Why it's an error:</strong> Incomplete air removal leads to "cold spots" where steam cannot reach, rendering instruments unsterile. It suggests issues with the vacuum pump, door seal, or internal valves.</p>
+                `
+            },
+            {
+                title: "Low Water Level / Water Supply Error",
+                explanation: `
+                    <p><strong>Meaning:</strong> The autoclave has detected that it doesn't have enough water to generate the required steam for the cycle.</p>
+                    <p><strong>Why it's an error:</strong> Insufficient water means inadequate steam production, directly compromising the sterilisation process.</p>
+                `
+            },
+            {
+                title: "Temperature Not Reached / Over Temperature / Heating Error",
+                explanation: `
+                    <p><strong>Meaning:</strong> The autoclave could not reach or maintain the programmed sterilisation temperature, or it exceeded it.</p>
+                    <p><strong>Why it's an error:</strong> Sterilisation is highly dependent on precise temperature. If the target temperature isn't met, micro-organisms won't be killed. Overheating can damage instruments.</p>
+                `
+            },
+            {
+                title: "Pressure Fault / Pressure Too Low/High",
+                explanation: `
+                    <p><strong>Meaning:</strong> The chamber pressure did not reach the required level, dropped unexpectedly, or became too high during the cycle.</p>
+                    <p><strong>Why it's an error:</strong> Steam sterilisation relies on both temperature and pressure. Incorrect pressure indicates a problem with steam generation, containment, or control, leading to an unsterile load.</p>
+                `
+            },
+            {
+                title: "Door Not Locked / Door Seal Error",
+                explanation: `
+                    <p><strong>Meaning:</strong> The autoclave's door was not properly closed or sealed before or during the cycle.</p>
+                    <p><strong>Why it's an error:</strong> An improper seal prevents the chamber from reaching and maintaining the necessary pressure and temperature for sterilisation.</p>
+                `
+            },
+            {
+                title: "Maintenance Required / Filter Blocked / Pump Error",
+                explanation: `
+                    <p><strong>Meaning:</strong> These are general system alerts indicating that a component needs attention or is malfunctioning, which can directly impact sterilisation performance.</p>
+                    <p><strong>Why it's an error:</strong> A blocked filter can impede steam/air flow, and a faulty pump can prevent proper vacuum or water circulation, leading to cycle failures. These messages often indicate a need for professional servicing.</p>
+                `
+            }
+        ];
+
+        const contentDisplay = document.getElementById('content-display');
+        const rollButton = document.getElementById('roll-button');
+        const restartButton = document.getElementById('restart-button');
+        const progressDisplay = document.getElementById('progress');
+
+        let currentIndex = 0;
+
+        /**
+         * Updates the progress display text based on the current error.
+         */
+        function updateProgress() {
+            progressDisplay.textContent = `Error ${currentIndex + 1} of ${errorsContent.length}`;
+        }
+
+        /**
+         * Displays the content for the given error index with animation.
+         * @param {number} index The index of the error in the errorsContent array to display.
+         */
+        function showContent(index) {
+            const errorData = errorsContent[index];
+
+            // Build the HTML for the current error
+            const newContent = document.createElement('div');
+            newContent.className = 'absolute w-full h-full flex flex-col justify-start items-center text-center px-4 pt-4 animate-slide-in-up overflow-y-auto';
+            newContent.innerHTML = `
+                <h2 class="text-2xl font-semibold mb-3 text-[#532A8C]">${errorData.title}</h2>
+                <div class="text-base text-[#532A8C] text-left w-full px-4">${errorData.explanation}</div>
+            `;
+            
+            const oldContent = contentDisplay.firstElementChild;
+
+            if (oldContent) {
+                oldContent.classList.add('animate-slide-out-up');
+                const handleAnimationEnd = () => {
+                    oldContent.removeEventListener('animationend', handleAnimationEnd);
+                    if (contentDisplay.contains(oldContent)) {
+                        contentDisplay.removeChild(oldContent);
+                    }
+                    contentDisplay.appendChild(newContent);
+                    document.getElementById('tube-container').classList.add('pulse-background');
+                    setTimeout(() => {
+                        document.getElementById('tube-container').classList.remove('pulse-background');
+                    }, 1000);
+                };
+                oldContent.addEventListener('animationend', handleAnimationEnd);
+
+                // Fallback timeout in case animationend doesn't fire
+                setTimeout(() => {
+                    if (oldContent.classList.contains('animate-slide-out-up') && contentDisplay.contains(oldContent)) {
+                        oldContent.removeEventListener('animationend', handleAnimationEnd);
+                        contentDisplay.removeChild(oldContent);
+                        if (!contentDisplay.contains(newContent)) {
+                            contentDisplay.appendChild(newContent);
+                        }
+                        document.getElementById('tube-container').classList.add('pulse-background');
+                        setTimeout(() => {
+                            document.getElementById('tube-container').classList.remove('pulse-background');
+                        }, 1000);
+                    }
+                }, 600); // Slightly longer than animation duration
+            } else {
+                contentDisplay.appendChild(newContent);
+            }
+
+            updateProgress();
+        }
+
+        // Event listener for the "Next Error" button
+        rollButton.addEventListener('click', () => {
+            rollButton.disabled = true;
+
+            if (currentIndex < errorsContent.length - 1) {
+                currentIndex++;
+                showContent(currentIndex);
+
+                setTimeout(() => {
+                    rollButton.disabled = false;
+                }, 1100); // Re-enable button after a delay that covers both animations
+
+                if (currentIndex === errorsContent.length - 1) {
+                    rollButton.classList.add('hidden');
+                    restartButton.classList.remove('hidden');
+                }
+            } else {
+                rollButton.disabled = false;
+            }
+        });
+
+        // Event listener for the "Start Over" button
+        restartButton.addEventListener('click', () => {
+            currentIndex = 0;
+            showContent(currentIndex);
+            restartButton.classList.add('hidden');
+            rollButton.classList.remove('hidden');
+        });
+
+        // Initial load: display the first error when the DOM is fully loaded
+        document.addEventListener('DOMContentLoaded', () => {
+            showContent(currentIndex);
+        });
+    </script>
+</body>
+</html>
